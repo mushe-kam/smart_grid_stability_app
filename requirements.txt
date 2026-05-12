@@ -1,1 +1,6 @@
-{"nbformat":4,"nbformat_minor":0,"metadata":{"colab":{"provenance":[],"authorship_tag":"ABX9TyOqiQaBXr4nedX1KX8/7OV5"},"kernelspec":{"name":"python3","display_name":"Python 3"},"language_info":{"name":"python"}},"cells":[{"cell_type":"markdown","source":["streamlit\n","pandas\n","numpy\n","scikit-learn\n","lightgbm\n","joblib"],"metadata":{"id":"N-JZsp6bmkSB"}}]}
+streamlit
+pandas
+numpy
+scikit-learn
+lightgbm
+joblib
