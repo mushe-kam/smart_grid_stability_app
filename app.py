@@ -1,1 +1,268 @@
-{"nbformat":4,"nbformat_minor":0,"metadata":{"colab":{"provenance":[],"authorship_tag":"ABX9TyPJis2RqaBUm/+sVi6Uwp1v"},"kernelspec":{"name":"python3","display_name":"Python 3"},"language_info":{"name":"python"}},"cells":[{"cell_type":"code","execution_count":null,"metadata":{"id":"iSbHK0kpmDhj"},"outputs":[],"source":["# ============================================================\n","# SMART GRID STABILITY PREDICTION APP\n","# ============================================================\n","# This app does NOT train the model.\n","# It only:\n","# 1. loads the saved model bundle,\n","# 2. accepts user input,\n","# 3. creates the six engineered features,\n","# 4. scales them,\n","# 5. predicts stable or unstable.\n","\n","import streamlit as st\n","import pandas as pd\n","import joblib\n","from pathlib import Path\n","\n","# ============================================================\n","# PAGE CONFIGURATION\n","# ============================================================\n","\n","st.set_page_config(\n","    page_title=\"Smart Grid Stability Prediction\",\n","    page_icon=\"⚡\",\n","    layout=\"centered\"\n",")\n","\n","# ============================================================\n","# LOAD SAVED MODEL BUNDLE\n","# ============================================================\n","\n","BUNDLE_PATH = Path(\"smart_grid_lightgbm_bundle.pkl\")\n","\n","@st.cache_resource\n","def load_bundle():\n","    \"\"\"\n","    Loads the saved model bundle.\n","\n","    The bundle must contain:\n","    - model\n","    - scaler\n","    - feature_names\n","    \"\"\"\n","\n","    if not BUNDLE_PATH.exists():\n","        return None\n","\n","    return joblib.load(BUNDLE_PATH)\n","\n","bundle = load_bundle()\n","\n","if bundle is None:\n","    st.error(\n","        \"Model bundle file not found. Please add \"\n","        \"`smart_grid_lightgbm_bundle.pkl` to the same folder as `app.py`.\"\n","    )\n","    st.stop()\n","\n","model = bundle[\"model\"]\n","scaler = bundle[\"scaler\"]\n","feature_names = bundle[\"feature_names\"]\n","\n","# ============================================================\n","# APP TITLE AND DESCRIPTION\n","# ============================================================\n","\n","st.title(\"Smart Grid Stability Prediction System\")\n","\n","st.write(\n","    \"This application predicts whether a decentralised smart-grid configuration \"\n","    \"is stable or unstable using a trained LightGBM model.\"\n",")\n","\n","st.info(\n","    \"The final model uses six engineered features derived from reaction-time \"\n","    \"and price-elasticity inputs.\"\n",")\n","\n","# ============================================================\n","# USER INPUT SECTION\n","# ============================================================\n","\n","st.subheader(\"Reaction-Time Inputs\")\n","\n","st.caption(\n","    \"Reaction-time values describe how quickly each grid participant responds \"\n","    \"to changes in grid conditions.\"\n",")\n","\n","col1, col2 = st.columns(2)\n","\n","with col1:\n","    tau1 = st.number_input(\n","        \"tau1 — Producer reaction time\",\n","        min_value=0.0,\n","        value=5.0,\n","        step=0.1\n","    )\n","\n","    tau2 = st.number_input(\n","        \"tau2 — Consumer 1 reaction time\",\n","        min_value=0.0,\n","        value=5.0,\n","        step=0.1\n","    )\n","\n","with col2:\n","    tau3 = st.number_input(\n","        \"tau3 — Consumer 2 reaction time\",\n","        min_value=0.0,\n","        value=5.0,\n","        step=0.1\n","    )\n","\n","    tau4 = st.number_input(\n","        \"tau4 — Consumer 3 reaction time\",\n","        min_value=0.0,\n","        value=5.0,\n","        step=0.1\n","    )\n","\n","st.subheader(\"Price-Elasticity Inputs\")\n","\n","st.caption(\n","    \"Price-elasticity values describe how strongly each participant responds \"\n","    \"to price-frequency signals.\"\n",")\n","\n","col3, col4 = st.columns(2)\n","\n","with col3:\n","    g1 = st.number_input(\n","        \"g1 — Producer price elasticity\",\n","        min_value=0.0,\n","        value=0.5,\n","        step=0.01\n","    )\n","\n","    g2 = st.number_input(\n","        \"g2 — Consumer 1 price elasticity\",\n","        min_value=0.0,\n","        value=0.5,\n","        step=0.01\n","    )\n","\n","with col4:\n","    g3 = st.number_input(\n","        \"g3 — Consumer 2 price elasticity\",\n","        min_value=0.0,\n","        value=0.5,\n","        step=0.01\n","    )\n","\n","    g4 = st.number_input(\n","        \"g4 — Consumer 3 price elasticity\",\n","        min_value=0.0,\n","        value=0.5,\n","        step=0.01\n","    )\n","\n","# ============================================================\n","# FEATURE ENGINEERING FUNCTION FOR DEPLOYMENT\n","# ============================================================\n","\n","def build_engineered_features(tau1, tau2, tau3, tau4, g1, g2, g3, g4):\n","    \"\"\"\n","    Converts raw user inputs into the six engineered features\n","    expected by the trained LightGBM model.\n","    \"\"\"\n","\n","    tau_values = [tau1, tau2, tau3, tau4]\n","    g_values = [g1, g2, g3, g4]\n","\n","    tau_mean = sum(tau_values) / 4\n","    tau_max = max(tau_values)\n","    tau_range = max(tau_values) - min(tau_values)\n","\n","    g_mean = sum(g_values) / 4\n","    g_range = max(g_values) - min(g_values)\n","\n","    tau_g_interaction = tau_mean * g_mean\n","\n","    input_df = pd.DataFrame([{\n","        \"tau_mean\": tau_mean,\n","        \"tau_max\": tau_max,\n","        \"tau_range\": tau_range,\n","        \"g_mean\": g_mean,\n","        \"g_range\": g_range,\n","        \"tau_g_interaction\": tau_g_interaction\n","    }])\n","\n","    return input_df\n","\n","# ============================================================\n","# PREDICTION SECTION\n","# ============================================================\n","\n","if st.button(\"Predict Stability\", type=\"primary\"):\n","\n","    # Create engineered features from user input.\n","    input_df = build_engineered_features(\n","        tau1, tau2, tau3, tau4,\n","        g1, g2, g3, g4\n","    )\n","\n","    # Ensure the feature order matches the training order.\n","    input_df = input_df[feature_names]\n","\n","    # Scale using the scaler fitted during training.\n","    input_scaled = pd.DataFrame(\n","        scaler.transform(input_df),\n","        columns=feature_names\n","    )\n","\n","    # Predict stable/unstable.\n","    prediction = model.predict(input_scaled)[0]\n","\n","    st.subheader(\"Prediction Result\")\n","\n","    prediction_text = str(prediction).lower()\n","\n","    if prediction_text == \"stable\":\n","        st.success(\"Predicted grid state: Stable\")\n","    elif prediction_text == \"unstable\":\n","        st.error(\"Predicted grid state: Unstable\")\n","    else:\n","        st.info(f\"Predicted class: {prediction}\")\n","\n","    # Show engineered features for transparency.\n","    with st.expander(\"View engineered features used by the model\"):\n","        st.dataframe(input_df, use_container_width=True)\n","\n","# ============================================================\n","# FOOTER\n","# ============================================================\n","\n","st.divider()\n","\n","st.caption(\n","    \"Final model: LightGBM trained on six engineered features — \"\n","    \"tau_mean, tau_max, tau_range, g_mean, g_range, and tau_g_interaction.\"\n",")"]}]}
+# ============================================================
+# SMART GRID STABILITY PREDICTION APP
+# ============================================================
+# This Streamlit app loads a trained LightGBM model bundle and
+# predicts whether a smart-grid configuration is stable or unstable.
+#
+# Required file in the same folder:
+#   smart_grid_lightgbm_bundle.pkl
+#
+# The bundle must contain:
+#   model
+#   scaler
+#   feature_names
+# ============================================================
+
+import streamlit as st
+import pandas as pd
+import joblib
+from pathlib import Path
+
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="Smart Grid Stability Prediction",
+    page_icon="⚡",
+    layout="centered"
+)
+
+
+# ============================================================
+# LOAD MODEL BUNDLE
+# ============================================================
+
+BUNDLE_PATH = Path("smart_grid_lightgbm_bundle.pkl")
+
+
+@st.cache_resource
+def load_model_bundle():
+    """
+    Loads the saved LightGBM model bundle.
+
+    The bundle should contain:
+    - model: trained LightGBM model
+    - scaler: fitted StandardScaler
+    - feature_names: list of six engineered features
+    """
+    if not BUNDLE_PATH.exists():
+        return None
+
+    return joblib.load(BUNDLE_PATH)
+
+
+bundle = load_model_bundle()
+
+if bundle is None:
+    st.error(
+        "Model bundle file not found. Please make sure "
+        "`smart_grid_lightgbm_bundle.pkl` is in the same folder as `app.py`."
+    )
+    st.stop()
+
+
+model = bundle["model"]
+scaler = bundle["scaler"]
+feature_names = bundle["feature_names"]
+
+
+# ============================================================
+# APP HEADER
+# ============================================================
+
+st.title("Smart Grid Stability Prediction System")
+
+st.write(
+    "This application predicts whether a decentralised smart-grid configuration "
+    "is stable or unstable using a trained LightGBM machine-learning model."
+)
+
+st.info(
+    "The model uses six engineered features derived from reaction-time and "
+    "price-elasticity inputs."
+)
+
+
+# ============================================================
+# USER INPUTS
+# ============================================================
+
+st.subheader("Reaction-Time Inputs")
+
+st.caption(
+    "Reaction time represents how quickly each participant responds to changes "
+    "in grid conditions."
+)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    tau1 = st.number_input(
+        "tau1 — Producer reaction time",
+        min_value=0.0,
+        value=5.0,
+        step=0.1
+    )
+
+    tau2 = st.number_input(
+        "tau2 — Consumer 1 reaction time",
+        min_value=0.0,
+        value=5.0,
+        step=0.1
+    )
+
+with col2:
+    tau3 = st.number_input(
+        "tau3 — Consumer 2 reaction time",
+        min_value=0.0,
+        value=5.0,
+        step=0.1
+    )
+
+    tau4 = st.number_input(
+        "tau4 — Consumer 3 reaction time",
+        min_value=0.0,
+        value=5.0,
+        step=0.1
+    )
+
+
+st.subheader("Price-Elasticity Inputs")
+
+st.caption(
+    "Price elasticity represents how strongly each participant responds to "
+    "price-frequency signals."
+)
+
+col3, col4 = st.columns(2)
+
+with col3:
+    g1 = st.number_input(
+        "g1 — Producer price elasticity",
+        min_value=0.0,
+        value=0.5,
+        step=0.01
+    )
+
+    g2 = st.number_input(
+        "g2 — Consumer 1 price elasticity",
+        min_value=0.0,
+        value=0.5,
+        step=0.01
+    )
+
+with col4:
+    g3 = st.number_input(
+        "g3 — Consumer 2 price elasticity",
+        min_value=0.0,
+        value=0.5,
+        step=0.01
+    )
+
+    g4 = st.number_input(
+        "g4 — Consumer 3 price elasticity",
+        min_value=0.0,
+        value=0.5,
+        step=0.01
+    )
+
+
+# ============================================================
+# FEATURE ENGINEERING
+# ============================================================
+
+def build_engineered_features(tau1, tau2, tau3, tau4, g1, g2, g3, g4):
+    """
+    Converts raw user inputs into the six engineered features used by the model.
+
+    Engineered features:
+    - tau_mean
+    - tau_max
+    - tau_range
+    - g_mean
+    - g_range
+    - tau_g_interaction
+    """
+
+    tau_values = [tau1, tau2, tau3, tau4]
+    g_values = [g1, g2, g3, g4]
+
+    tau_mean = sum(tau_values) / 4
+    tau_max = max(tau_values)
+    tau_range = max(tau_values) - min(tau_values)
+
+    g_mean = sum(g_values) / 4
+    g_range = max(g_values) - min(g_values)
+
+    tau_g_interaction = tau_mean * g_mean
+
+    input_data = pd.DataFrame([{
+        "tau_mean": tau_mean,
+        "tau_max": tau_max,
+        "tau_range": tau_range,
+        "g_mean": g_mean,
+        "g_range": g_range,
+        "tau_g_interaction": tau_g_interaction
+    }])
+
+    return input_data
+
+
+# ============================================================
+# PREDICTION
+# ============================================================
+
+if st.button("Predict Stability", type="primary"):
+
+    # Create engineered features from user inputs.
+    input_df = build_engineered_features(
+        tau1=tau1,
+        tau2=tau2,
+        tau3=tau3,
+        tau4=tau4,
+        g1=g1,
+        g2=g2,
+        g3=g3,
+        g4=g4
+    )
+
+    # Ensure the feature order matches the training order.
+    input_df = input_df[feature_names]
+
+    # Scale input using the scaler fitted during training.
+    input_scaled = pd.DataFrame(
+        scaler.transform(input_df),
+        columns=feature_names
+    )
+
+    # Make prediction.
+    prediction = model.predict(input_scaled)[0]
+
+    st.subheader("Prediction Result")
+
+    prediction_text = str(prediction).lower()
+
+    if prediction_text == "stable":
+        st.success("Predicted grid state: Stable")
+    elif prediction_text == "unstable":
+        st.error("Predicted grid state: Unstable")
+    else:
+        st.info(f"Predicted class: {prediction}")
+
+    # Show engineered features used for transparency.
+    with st.expander("View engineered features used by the model"):
+        st.dataframe(input_df, use_container_width=True)
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "Final model: LightGBM trained on six engineered features — "
+    "tau_mean, tau_max, tau_range, g_mean, g_range, and tau_g_interaction."
+)
